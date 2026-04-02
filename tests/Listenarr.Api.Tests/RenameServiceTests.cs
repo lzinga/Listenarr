@@ -436,7 +436,8 @@ namespace Listenarr.Api.Tests
 
         [Fact]
         public async Task ExecuteRename_MovesFileAndUpdatesDatabasePaths()
-        {            var libraryRoot = Path.Join(_tempRoot, "library");
+        {
+            var libraryRoot = Path.Join(_tempRoot, "library");
             var sourceFolder = Path.Join(libraryRoot, "Old");
             var targetFolder = Path.Join(libraryRoot, "Author", "Book");
             Directory.CreateDirectory(sourceFolder);
