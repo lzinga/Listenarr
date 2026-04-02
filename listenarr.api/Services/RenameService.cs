@@ -288,6 +288,10 @@ namespace Listenarr.Api.Services
             var normalizedNew = NormalizePath(newFolderPath);
             if (!IsPathWithinAllowedRoots(normalizedCurrent, allowedRoots) || !IsPathWithinAllowedRoots(normalizedNew, allowedRoots))
                 return (false, "Destination path is outside the allowed library roots.");
+            // Refuse to move a directory into a subdirectory of itself – this would either fail
+            // outright (Directory.Move) or recurse infinitely (CopyDirRecursive fallback).
+            if (FileUtils.IsPathWithinRoot(normalizedNew, normalizedCurrent))
+                return (false, "Target folder is a subdirectory of the current folder. Moving a directory into itself is not allowed.");
             if (!Directory.Exists(normalizedCurrent))
             {
                 audiobook.BasePath = normalizedNew;

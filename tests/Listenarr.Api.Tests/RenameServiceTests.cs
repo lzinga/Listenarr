@@ -372,9 +372,71 @@ namespace Listenarr.Api.Tests
         }
 
         [Fact]
-        public async Task ExecuteRename_MovesFileAndUpdatesDatabasePaths()
+        public async Task ExecuteRename_WhenNewFolderIsInsideCurrentFolder_ReturnsError()
         {
+            // Regression test for the "wild copy of root audiobook folder" issue.
+            // When book title == series name the naming pattern can produce a destination
+            // that is a subdirectory of the book's current folder.  Moving a directory into
+            // its own subdirectory used to cause infinite recursion via CopyDirRecursive.
             var libraryRoot = Path.Join(_tempRoot, "library");
+            var currentFolder = Path.Join(libraryRoot, "Series A");
+            Directory.CreateDirectory(currentFolder);
+            // Simulate other books sharing the same series folder
+            var book1Path = Path.Join(currentFolder, "Series A.m4b");
+            var book2Path = Path.Join(currentFolder, "Book 2.m4b");
+            await File.WriteAllTextAsync(book1Path, "book1");
+            await File.WriteAllTextAsync(book2Path, "book2");
+
+            // The naming pattern for "Series A" (title == series) would generate
+            // a destination that is a subfolder of the current folder.
+            var nestedFolder = Path.Join(currentFolder, "Series A"); // inside currentFolder!
+
+            var settings = new ApplicationSettings
+            {
+                OutputPath = libraryRoot,
+                FolderNamingPattern = "{Series}/{Title}",
+                FileNamingPattern = "{Title}"
+            };
+
+            var (service, db, _) = BuildService(settings);
+            db.Audiobooks.Add(new Audiobook
+            {
+                Id = 99,
+                Title = "Series A",
+                Series = "Series A",
+                Authors = new List<string> { "Author" },
+                BasePath = currentFolder,
+                FilePath = book1Path,
+                Files = new List<AudiobookFile>
+                {
+                    new() { Id = 991, AudiobookId = 99, Path = book1Path, Format = "m4b" }
+                }
+            });
+            await db.SaveChangesAsync();
+
+            var results = await service.ExecuteRenameAsync(new List<RenameOperation>
+            {
+                new()
+                {
+                    AudiobookId = 99,
+                    NewFolderPath = nestedFolder
+                }
+            });
+
+            var result = Assert.Single(results);
+            Assert.False(result.Success, "Moving a directory into its own subdirectory must fail");
+            Assert.NotNull(result.Error);
+            // Source directory and files must remain untouched
+            Assert.True(Directory.Exists(currentFolder));
+            Assert.True(File.Exists(book1Path));
+            Assert.True(File.Exists(book2Path));
+            // The dangerous nested destination must NOT have been created
+            Assert.False(Directory.Exists(nestedFolder));
+        }
+
+        [Fact]
+        public async Task ExecuteRename_MovesFileAndUpdatesDatabasePaths()
+        {            var libraryRoot = Path.Join(_tempRoot, "library");
             var sourceFolder = Path.Join(libraryRoot, "Old");
             var targetFolder = Path.Join(libraryRoot, "Author", "Book");
             Directory.CreateDirectory(sourceFolder);

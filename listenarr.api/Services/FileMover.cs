@@ -40,6 +40,16 @@ namespace Listenarr.Api.Services
 
         public async Task<bool> MoveDirectoryAsync(string sourceDir, string destDir)
         {
+            // Guard: refuse to move a directory into a subdirectory of itself, which would
+            // cause Directory.Move to fail and the CopyDirRecursive fallback to recurse infinitely.
+            if (FileUtils.IsPathWithinRoot(destDir, sourceDir))
+            {
+                _logger.LogError(
+                    "Refusing to move directory {Source} into its own subdirectory {Dest}. This would cause infinite recursion.",
+                    sourceDir, destDir);
+                return false;
+            }
+
             // Try move with retries
             var attempt = 0;
             var delay = 1000;
@@ -359,8 +369,12 @@ namespace Listenarr.Api.Services
 
         private void CopyDirRecursive(string src, string dst)
         {
+            // Snapshot subdirectories BEFORE creating dst so that, if dst is inside src,
+            // the newly-created destination directory is not included in the enumeration
+            // and does not cause infinite recursion.
+            var subDirs = Directory.GetDirectories(src, "*", SearchOption.TopDirectoryOnly);
             Directory.CreateDirectory(dst);
-            foreach (var dir in Directory.GetDirectories(src, "*", SearchOption.TopDirectoryOnly))
+            foreach (var dir in subDirs)
             {
                 var sub = Path.Join(dst, Path.GetFileName(dir));
                 CopyDirRecursive(dir, sub);

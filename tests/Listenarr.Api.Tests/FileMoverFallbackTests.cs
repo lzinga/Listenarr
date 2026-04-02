@@ -61,6 +61,29 @@ namespace Listenarr.Api.Tests
         }
 
         [Fact]
+        public async Task MoveDirectoryAsync_WhenDestinationIsInsideSource_ReturnsFalseWithoutCopyingFiles()
+        {
+            // Arrange – this is the scenario that caused infinite recursion:
+            // the desired destination is a subdirectory of the source.
+            var source = Path.Join(_root, "Series A");
+            var dest = Path.Join(source, "Series A"); // dest is INSIDE source
+            Directory.CreateDirectory(source);
+            var fileInSource = Path.Join(source, "book1.m4b");
+            await File.WriteAllTextAsync(fileInSource, "dummy");
+
+            var mover = new FileMover(new NullLogger<FileMover>());
+
+            var result = await mover.MoveDirectoryAsync(source, dest);
+
+            // Must refuse the operation rather than recurse forever
+            Assert.False(result, "MoveDirectoryAsync must refuse a dest-inside-src move to prevent infinite recursion");
+            // Source must be untouched
+            Assert.True(File.Exists(fileInSource), "Source file must not be moved or deleted");
+            // Destination must NOT have been created
+            Assert.False(Directory.Exists(dest), "Destination subdirectory must not be created");
+        }
+
+        [Fact]
         public async Task MoveFileAsync_MovesFileSuccessfully()
         {
             var sourceFile = Path.Join(_root, "a.mp3");
